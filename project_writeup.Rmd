@@ -1,0 +1,85 @@
+---
+title: "Prediction Assignment Writeup"
+output: html_document
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, I am going to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Loading the dataset and libraries
+
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(doMC)
+library(randomForest)
+registerDoMC(cores = 4)
+set.seed(1234)
+train <- read.csv('pml-training.csv', na.strings=c("NA","#DIV/0!"))
+test <- read.csv('pml-testing.csv', na.strings=c("NA","#DIV/0!"))
+```
+
+## Data preprocessing
+
+During the preprocessing stage of the analysis, I change the type of the 'classe' variable to a factor.
+I remove variables that I don't want to use as predictors, such as user_name and timestamps.
+
+
+```{r message=FALSE, warning=FALSE}
+train$classe <- factor(train$classe)
+train <- subset(train, select=-c(X,user_name, raw_timestamp_part_1,
+                                 raw_timestamp_part_2, cvtd_timestamp,
+                                 new_window, num_window))
+```
+
+In the summary of the train dataset I've noticed that a lot of variables have most of their values missing (I am not going to show the summary here as it is too long). I've decided to use only columns that have all values specified. I find the columns with complete values and subset the dataset. Next I split the dataset into a training set (75%) and a validation set (25%).
+
+```{r message=FALSE, warning=FALSE}
+complete_cols <- colnames(train[colSums(is.na(train)) == 0])
+train <- subset(train, select=complete_cols)
+
+inTrain <- createDataPartition(y=train$classe, p=0.75, list=FALSE)
+
+trainingSet <- train[inTrain,]
+validationSet <- train[-inTrain,]
+
+```
+
+## Model creation
+
+I train a random forest model and find important variables using the 'varImp' function. I subset the training set to contain only the 20 most important variables.
+
+```{r message=FALSE, warning=FALSE}
+rf <- randomForest(classe ~ ., data=trainingSet)
+imp <- varImp(rf)
+
+imp_cols <- rownames(imp)[order(imp$Overall, decreasing=TRUE)][1:20]
+trainingSet <- trainingSet[, c(imp_cols, 'classe')]
+```
+
+I train a random forest model again (using 20 predictors).
+
+```{r message=FALSE, warning=FALSE}
+rf <- randomForest(classe ~ ., data=trainingSet)
+```
+
+## Model evaluation
+
+And I check the accuracy of the model on the validation data:
+
+```{r message=FALSE, warning=FALSE}
+pred_val <- predict(rf, newdata=validationSet)
+confusionMatrix(pred_val, validationSet$classe)
+```
+The accuracy of the model on the validation set is 99.55%, so the estimated out of sample error is 0.45%.
+
+Now I predict values for the test set. I've submitted these values to "Course Project: Submission" and all of the values were correct.
+
+```{r message=FALSE, warning=FALSE}
+pred_test <- predict(rf, newdata=test)
+pred_test
+```
